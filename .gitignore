@@ -1,0 +1,23 @@
+# dati scaricati da OGB (rigenerabili con src/data.py)
+data/
+
+# artefatti LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# checkpoint dei modelli
+*.pt
+*.ckpt
+
+#altro
+*.pdf
+*.tex
+*.md
