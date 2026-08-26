@@ -1,3 +1,18 @@
+"""Baseline E1: fingerprint Morgan/ECFP4 piu' Random Forest, un modello per task.
+
+E' il termine di paragone non neurale del progetto: al posto di imparare la
+rappresentazione dal grafo si usano i fingerprint circolari di rdkit, che codificano quali
+sottostrutture di raggio 2 sono presenti nella molecola. Per ogni task viene addestrata una
+foresta separata sulle sole molecole effettivamente misurate su quel task.
+
+Gli SMILES e le etichette arrivano da ``mapping/mol.csv.gz`` del dataset OGB e lo split e'
+quello scaffold ufficiale, letto dagli stessi file: la baseline e la GNN vedono quindi
+esattamente le stesse molecole in train, validation e test (verificato da
+``tests/test_baselines.py``).
+
+    python src/baselines.py                      # 3 seed
+    python src/baselines.py --class-weight none  # confronto senza riequilibrio
+"""
 import argparse
 import json
 import time
@@ -20,12 +35,14 @@ SPLIT_DIR = DATA_ROOT / "ogbg_moltox21" / "split" / "scaffold"
 
 
 def load_smiles(path=MOL_CSV):
+    """SMILES ed etichette del dataset, nell'ordine dei grafi PyG."""
     df = pd.read_csv(path)
     # la riga i-esima di mol.csv.gz e' il grafo i-esimo del dataset PyG
     return df["smiles"].tolist(), df[TASK_NAMES].to_numpy(dtype=float)
 
 
 def load_split(path=SPLIT_DIR):
+    """Indici dello split scaffold ufficiale, letti dai csv di OGB."""
     return {
         k: pd.read_csv(path / f"{k}.csv.gz", header=None).to_numpy().ravel()
         for k in ("train", "valid", "test")
@@ -36,6 +53,13 @@ SANITIZE_RILASSATA = Chem.SanitizeFlags.SANITIZE_ALL ^ Chem.SanitizeFlags.SANITI
 
 
 def _parse(s):
+    """Converte uno SMILES in molecola rdkit, con un secondo tentativo piu' permissivo.
+
+    Otto composti di alluminio non superano il controllo di valenza standard; vengono
+    riletti disattivando la sola sanitizzazione delle proprieta', cosi' nessuna molecola
+    resta senza fingerprint. Restituisce ``(mol, rilassato)``, con ``mol`` a ``None`` se
+    entrambi i tentativi falliscono.
+    """
     mol = Chem.MolFromSmiles(s)
     if mol is not None:
         return mol, False
@@ -48,6 +72,11 @@ def _parse(s):
 
 
 def morgan_fingerprints(smiles, radius=2, n_bits=2048):
+    """Matrice ``[n_molecole, n_bits]`` di fingerprint ECFP binari.
+
+    Restituisce ``(X, falliti, rilassati)``: gli indici delle molecole non parsate (riga di
+    zeri) e di quelle rilette con sanitizzazione rilassata.
+    """
     gen = rdFingerprintGenerator.GetMorganGenerator(radius=radius, fpSize=n_bits)
     X = np.zeros((len(smiles), n_bits), dtype=np.uint8)
     falliti, rilassati = [], []
@@ -63,6 +92,12 @@ def morgan_fingerprints(smiles, radius=2, n_bits=2048):
 
 
 def fit_predict(X, y, split, seed, n_estimators=500, class_weight="balanced"):
+    """Addestra una foresta per task e restituisce gli score di valid e test.
+
+    Ogni foresta vede solo le molecole con etichetta osservata su quel task, il che replica
+    sui dati tabellari la stessa mascheratura che :func:`metrics.masked_bce_loss` applica
+    alla GNN.
+    """
     scores = {k: np.zeros((len(split[k]), len(TASK_NAMES))) for k in ("valid", "test")}
     for t in range(len(TASK_NAMES)):
         tr = split["train"]
@@ -75,11 +110,21 @@ def fit_predict(X, y, split, seed, n_estimators=500, class_weight="balanced"):
         )
         clf.fit(X[tr][m], y[tr, t][m])
         for k in ("valid", "test"):
-            scores[k][:, t] = clf.predict_proba(X[split[k]])[:, 1]
+            proba = clf.predict_proba(X[split[k]])
+            # con una sola classe nel train predict_proba ha una colonna sola:
+            # lo score e' costante e il task finisce fra i non valutabili
+            scores[k][:, t] = (proba[:, 1] if proba.shape[1] > 1
+                               else float(clf.classes_[0]))
     return scores
 
 
 def run(seeds=(0, 1, 2), n_estimators=500, class_weight="balanced", n_bits=2048, radius=2):
+    """Ripete l'esperimento su piu' seed e raccoglie le metriche di ciascuno.
+
+    I fingerprint si calcolano una volta sola: fra un seed e l'altro cambia solo la foresta,
+    quindi la deviazione standard riportata per E1 misura la sola varianza del modello, su
+    dati e split identici. Non e' confrontabile con quella delle run GPU della GNN.
+    """
     smiles, y = load_smiles()
     split = load_split()
     X, falliti, rilassati = morgan_fingerprints(smiles, radius=radius, n_bits=n_bits)
@@ -109,6 +154,7 @@ def run(seeds=(0, 1, 2), n_estimators=500, class_weight="balanced", n_bits=2048,
 
 
 def aggregate(per_seed, split):
+    """Media e deviazione standard sui seed, nel formato usato da ``aggregate.py``."""
     auc = np.array([s[split]["roc_auc"] for s in per_seed])
     ap = np.array([s[split]["ap"] for s in per_seed])
     auc_task = np.array([s[split]["roc_auc_per_task"] for s in per_seed])
@@ -123,6 +169,7 @@ def aggregate(per_seed, split):
 
 
 def main():
+    """Esegue la baseline, stampa il riepilogo e salva ``results/baseline_rf.json``."""
     p = argparse.ArgumentParser()
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     p.add_argument("--n-estimators", type=int, default=500)

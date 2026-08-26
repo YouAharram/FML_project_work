@@ -1,3 +1,14 @@
+"""Addestramento di una GNN su Tox21: un run, un file di risultati.
+
+Il modello si seleziona sulla ROC-AUC di validation (early stopping con pazienza
+configurabile) e il test si valuta una sola volta, alla fine, con i pesi migliori. Ogni run
+scrive ``results/runs/<tag>_seed<N>.json`` con configurazione, storia per epoca e metriche
+finali: e' quel file che ``aggregate.py`` rilegge per costruire la tabella.
+
+    python src/train.py                            # GIN 5 strati, mean, seed 0
+    python src/train.py --conv gine --pooling sum  # varianti per le ablation
+    python src/train.py --help                     # elenco completo delle opzioni
+"""
 import argparse
 import json
 import random
@@ -8,7 +19,7 @@ import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 
-from data import DATA_ROOT, TASK_NAMES, load_tox21
+from data import DATA_ROOT, get_split, load_tox21
 from metrics import compute_pos_weight, masked_bce_loss, summarize
 from models import GNN, count_parameters
 
@@ -16,6 +27,10 @@ RESULTS_DIR = Path(__file__).resolve().parent.parent / "results"
 RUNS_DIR = RESULTS_DIR / "runs"
 
 
+# nota: questo fissa l'inizializzazione e l'ordine dei batch, non l'aritmetica. su GPU gli
+# scatter del message passing usano somme atomiche in ordine non deterministico, quindi due
+# run con lo stesso seed divergono (su CPU sono identiche). le medie su piu' seed misurano
+# quindi la variabilita' complessiva run-to-run, non la sola inizializzazione
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -24,6 +39,11 @@ def set_seed(seed):
 
 
 def build_loaders(dataset, split_idx, batch_size, seed, num_workers=0):
+    """DataLoader PyG per i tre split; solo il training viene mescolato.
+
+    PyG impacchetta i grafi del batch in un unico grafo disconnesso, con ``batch`` che dice
+    a quale molecola appartiene ogni atomo: e' l'informazione che il pooling globale usa.
+    """
     g = torch.Generator()
     g.manual_seed(seed)
     return {
@@ -39,6 +59,7 @@ def build_loaders(dataset, split_idx, batch_size, seed, num_workers=0):
 
 
 def train_epoch(model, loader, optimizer, device, pos_weight=None):
+    """Una epoca di addestramento; restituisce la loss media per molecola."""
     model.train()
     totale, n = 0.0, 0
     for batch in loader:
@@ -54,6 +75,7 @@ def train_epoch(model, loader, optimizer, device, pos_weight=None):
 
 @torch.no_grad()
 def evaluate(model, loader, device):
+    """Valuta uno split e restituisce il dizionario prodotto da :func:`summarize`."""
     model.eval()
     y_true, y_score = [], []
     for batch in loader:
@@ -64,10 +86,14 @@ def evaluate(model, loader, device):
 
 
 def run(args):
+    """Esegue un run completo e salva il record dei risultati su disco."""
     set_seed(args.seed)
     device = torch.device(args.device)
 
-    dataset, split_idx = load_tox21(Path(args.data_root))
+    dataset, _ = load_tox21(Path(args.data_root))
+    # con lo split casuale il seed cambia anche la partizione: la deviazione standard
+    # riportata su E6 include quindi la variabilita' del sorteggio, non solo quella dell'init
+    split_idx = get_split(dataset, args.split, args.seed)
     loaders = build_loaders(dataset, split_idx, args.batch_size, args.seed, args.num_workers)
 
     pos_weight = None
@@ -80,7 +106,8 @@ def run(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     print(f"  {args.conv} x{args.layers}, hidden {args.hidden}, pooling {args.pooling}, "
-          f"dropout {args.dropout}, pos_weight {bool(args.pos_weight)}, seed {args.seed}")
+          f"dropout {args.dropout}, pos_weight {bool(args.pos_weight)}, "
+          f"split {args.split}, seed {args.seed}")
     print(f"  {count_parameters(model):,} parametri su {device}\n")
 
     storia = []
@@ -107,6 +134,10 @@ def run(args):
             print(f"\n  early stopping: nessun miglioramento da {args.patience} epoche")
             break
 
+    if best_state is None:
+        # nessuna epoca ha prodotto un'AUC valida (tutti NaN): non c'e' modello da
+        # selezionare, meglio fallire subito che valutare pesi arbitrari
+        raise RuntimeError("nessuna epoca con AUC di validation valida: run interrotto")
     model.load_state_dict(best_state)
     finale = {k: evaluate(model, loaders[k], device) for k in ("valid", "test")}
     durata = time.time() - t0
@@ -121,7 +152,7 @@ def run(args):
             "dropout": args.dropout, "pooling": args.pooling, "lr": args.lr,
             "batch_size": args.batch_size, "epochs": args.epochs,
             "patience": args.patience, "pos_weight": bool(args.pos_weight),
-            "seed": args.seed, "split": "scaffold", "n_parametri": count_parameters(model),
+            "seed": args.seed, "split": args.split, "n_parametri": count_parameters(model),
         },
         "migliore_epoca": best["epoca"],
         "epoche_eseguite": len(storia),
@@ -147,6 +178,7 @@ def run(args):
 
 
 def get_args(argv=None):
+    """Interfaccia da riga di comando; i default sono la configurazione di riferimento."""
     p = argparse.ArgumentParser()
     p.add_argument("--conv", default="gin", choices=["gin", "gine", "gcn"])
     p.add_argument("--layers", type=int, default=5)
@@ -158,6 +190,7 @@ def get_args(argv=None):
     p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--patience", type=int, default=20)
     p.add_argument("--pos-weight", action="store_true")
+    p.add_argument("--split", default="scaffold", choices=["scaffold", "random"])
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--num-workers", type=int, default=0)

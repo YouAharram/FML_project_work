@@ -1,8 +1,18 @@
+"""Caricamento del dataset Tox21, split e statistiche descrittive.
+
+Il dataset e' ``ogbg-moltox21`` di OGB: 7831 molecole gia' convertite in grafi PyG, con
+12 etichette binarie ciascuna e il 17% di etichette assenti (NaN). Lo split di
+riferimento e' quello scaffold ufficiale di OGB; ``random_split`` fornisce l'alternativa
+casuale usata nell'esperimento E6.
+
+Eseguito come script stampa le statistiche per task:
+
+    python src/data.py
+"""
 from pathlib import Path
 import torch
 from torch_geometric.data.data import DataEdgeAttr, DataTensorAttr
 from torch_geometric.data.storage import GlobalStorage
-from torch_geometric.loader import DataLoader
 from ogb.graphproppred import PygGraphPropPredDataset
 
 DATA_ROOT = Path(__file__).resolve().parent.parent / "data"
@@ -14,31 +24,62 @@ TASK_NAMES = [
 
 
 def _allow_pyg_globals():
+    """Autorizza le classi PyG per ``torch.load``.
+
+    ogb 1.3.6 chiama ``torch.load`` senza ``weights_only=False``; da torch 2.6 il default
+    e' cambiato e il caricamento fallisce se le classi non sono in allowlist.
+    """
     torch.serialization.add_safe_globals([DataEdgeAttr, DataTensorAttr, GlobalStorage])
 
 
 def load_tox21(root=DATA_ROOT):
+    """Scarica (se serve) e apre ogbg-moltox21.
+
+    Restituisce ``(dataset, split_idx)`` dove ``split_idx`` e' lo split scaffold ufficiale
+    con chiavi ``train`` / ``valid`` / ``test``. Il download avviene una sola volta in
+    ``root`` ed e' di circa 3 MB.
+    """
     _allow_pyg_globals()
 
     dataset = PygGraphPropPredDataset(name="ogbg-moltox21", root=str(root))
     return dataset, dataset.get_idx_split()
 
 
-def get_dataloaders(batch_size=32, num_workers=0, root=DATA_ROOT):
-    dataset, split_idx = load_tox21(root)
-    loaders = {
-        name: DataLoader(
-            dataset[split_idx[name]],
-            batch_size=batch_size,
-            shuffle=(name == "train"),
-            num_workers=num_workers,
-        )
-        for name in ("train", "valid", "test")
+def random_split(dataset, seed=0):
+    """Partizione casuale con le stesse taglie dello split scaffold (esperimento E6).
+
+    Il seed controlla il sorteggio: seed diversi danno insiemi di test diversi, quindi la
+    deviazione standard su E6 include anche la variabilita' della partizione.
+    """
+    # le dimensioni sono copiate dallo split scaffold: E6 deve isolare il criterio di
+    # partizione, non la taglia degli insiemi
+    scaffold = dataset.get_idx_split()
+    n_train, n_valid = len(scaffold["train"]), len(scaffold["valid"])
+
+    g = torch.Generator().manual_seed(seed)
+    perm = torch.randperm(len(dataset), generator=g)
+    return {
+        "train": perm[:n_train],
+        "valid": perm[n_train:n_train + n_valid],
+        "test": perm[n_train + n_valid:],
     }
-    return dataset, loaders
+
+
+def get_split(dataset, tipo="scaffold", seed=0):
+    """Sceglie il criterio di partizione: ``"scaffold"`` (default) o ``"random"``."""
+    if tipo == "scaffold":
+        return dataset.get_idx_split()
+    if tipo == "random":
+        return random_split(dataset, seed)
+    raise ValueError(f"split sconosciuto: {tipo}")
 
 
 def dataset_stats(dataset, split_idx=None):
+    """Statistiche per la fase esplorativa.
+
+    Restituisce ``(overall, rows)``: un dizionario con i totali del dataset e una riga per
+    task con numero di etichette misurate, percentuale di mancanti e di positivi.
+    """
     y = torch.cat([d.y for d in dataset], dim=0)  # [N, 12]
     valid = ~torch.isnan(y)
 
