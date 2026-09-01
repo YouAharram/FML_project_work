@@ -18,10 +18,6 @@ RESULTS_DIR = Path(__file__).resolve().parent.parent / "results"
 RUNS_DIR = RESULTS_DIR / "runs"
 
 
-# nota: questo fissa l'inizializzazione e l'ordine dei batch, non l'aritmetica. su GPU gli
-# scatter del message passing usano somme atomiche in ordine non deterministico, quindi due
-# run con lo stesso seed divergono (su CPU sono identiche). le medie su piu' seed misurano
-# quindi la variabilita' complessiva run-to-run, non la sola inizializzazione
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
