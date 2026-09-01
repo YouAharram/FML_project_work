@@ -1,9 +1,4 @@
 """Tabella riassuntiva dei run della GNN: media e deviazione standard sui seed.
-
-Legge tutti i ``results/runs/*.json``, li raggruppa per tag (il nome del file senza il
-suffisso ``_seed<N>``) e stampa una riga per configurazione, preceduta dalla baseline E1 se
-``results/baseline_rf.json`` esiste.
-
     python src/aggregate.py              # tabella principale
     python src/aggregate.py --per-task   # anche il dettaglio per i 12 task
 """
