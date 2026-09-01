@@ -98,22 +98,3 @@ python src/aggregate.py --per-task
 Rilegge tutti i file in `results/runs/` più `results/baseline_rf.json` e stampa media e
 deviazione standard sui seed di ROC-AUC e average precision — la Tabella 3 della relazione.
 Senza `--per-task` mostra solo le medie sui 12 task.
-
-### 5. Figure
-
-Le figure 1-3 della relazione si rigenerano eseguendo `notebooks/eda.ipynb`, la 4 con:
-
-```bash
-python scripts/fig_rappresentazione.py
-```
-
-Tutte finiscono in `results/figures/` e sono già incluse nel repository, quindi la relazione
-si compila anche senza rigenerarle:
-
-```bash
-pdflatex -interaction=nonstopmode -output-directory=report report/relazione.tex
-pdflatex -interaction=nonstopmode -output-directory=report report/relazione.tex
-```
-
-Va lanciato dalla radice, perché i percorsi delle immagini nel `.tex` sono relativi ad essa,
-e due volte perché i riferimenti a tabelle e figure si risolvono alla seconda passata.
