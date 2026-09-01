@@ -1,14 +1,5 @@
-"""Addestramento di una GNN su Tox21: un run, un file di risultati.
+"""Addestramento di una GNN su Tox21 """
 
-Il modello si seleziona sulla ROC-AUC di validation (early stopping con pazienza
-configurabile) e il test si valuta una sola volta, alla fine, con i pesi migliori. Ogni run
-scrive ``results/runs/<tag>_seed<N>.json`` con configurazione, storia per epoca e metriche
-finali: e' quel file che ``aggregate.py`` rilegge per costruire la tabella.
-
-    python src/train.py                            # GIN 5 strati, mean, seed 0
-    python src/train.py --conv gine --pooling sum  # varianti per le ablation
-    python src/train.py --help                     # elenco completo delle opzioni
-"""
 import argparse
 import json
 import random
@@ -39,11 +30,6 @@ def set_seed(seed):
 
 
 def build_loaders(dataset, split_idx, batch_size, seed, num_workers=0):
-    """DataLoader PyG per i tre split; solo il training viene mescolato.
-
-    PyG impacchetta i grafi del batch in un unico grafo disconnesso, con ``batch`` che dice
-    a quale molecola appartiene ogni atomo: e' l'informazione che il pooling globale usa.
-    """
     g = torch.Generator()
     g.manual_seed(seed)
     return {
@@ -59,7 +45,6 @@ def build_loaders(dataset, split_idx, batch_size, seed, num_workers=0):
 
 
 def train_epoch(model, loader, optimizer, device, pos_weight=None):
-    """Una epoca di addestramento; restituisce la loss media per molecola."""
     model.train()
     totale, n = 0.0, 0
     for batch in loader:
@@ -75,7 +60,6 @@ def train_epoch(model, loader, optimizer, device, pos_weight=None):
 
 @torch.no_grad()
 def evaluate(model, loader, device):
-    """Valuta uno split e restituisce il dizionario prodotto da :func:`summarize`."""
     model.eval()
     y_true, y_score = [], []
     for batch in loader:
@@ -86,7 +70,6 @@ def evaluate(model, loader, device):
 
 
 def run(args):
-    """Esegue un run completo e salva il record dei risultati su disco."""
     set_seed(args.seed)
     device = torch.device(args.device)
 
@@ -178,7 +161,6 @@ def run(args):
 
 
 def get_args(argv=None):
-    """Interfaccia da riga di comando; i default sono la configurazione di riferimento."""
     p = argparse.ArgumentParser()
     p.add_argument("--conv", default="gin", choices=["gin", "gine", "gcn"])
     p.add_argument("--layers", type=int, default=5)

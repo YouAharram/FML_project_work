@@ -1,4 +1,3 @@
-"""Stile condiviso dalle figure del progetto, cosi' che notebook e script coincidano."""
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
@@ -11,7 +10,6 @@ GRID = "#dcdcd8"
 
 
 def use_project_style():
-    """Applica la palette e i parametri tipografici del progetto a matplotlib."""
     mpl.rcParams.update({
         "figure.facecolor": SURFACE,
         "axes.facecolor": SURFACE,
@@ -43,7 +41,6 @@ def use_project_style():
 
 
 def bar_labels(ax, bars, fmt="{:.1f}%", pad=0.6):
-    """Scrive il valore in fondo a ogni barra di un grafico a barre orizzontali."""
     for b in bars:
         w = b.get_width()
         ax.text(w + pad, b.get_y() + b.get_height() / 2, fmt.format(w),

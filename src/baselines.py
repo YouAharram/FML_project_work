@@ -1,18 +1,5 @@
-"""Baseline E1: fingerprint Morgan/ECFP4 piu' Random Forest, un modello per task.
+""" Baseline E1: fingerprint Morgan/ECFP4 piu' Random Forest, un modello per task. """
 
-E' il termine di paragone non neurale del progetto: al posto di imparare la
-rappresentazione dal grafo si usano i fingerprint circolari di rdkit, che codificano quali
-sottostrutture di raggio 2 sono presenti nella molecola. Per ogni task viene addestrata una
-foresta separata sulle sole molecole effettivamente misurate su quel task.
-
-Gli SMILES e le etichette arrivano da ``mapping/mol.csv.gz`` del dataset OGB e lo split e'
-quello scaffold ufficiale, letto dagli stessi file: la baseline e la GNN vedono quindi
-esattamente le stesse molecole in train, validation e test (verificato da
-``tests/test_baselines.py``).
-
-    python src/baselines.py                      # 3 seed
-    python src/baselines.py --class-weight none  # confronto senza riequilibrio
-"""
 import argparse
 import json
 import time
@@ -53,13 +40,6 @@ SANITIZE_RILASSATA = Chem.SanitizeFlags.SANITIZE_ALL ^ Chem.SanitizeFlags.SANITI
 
 
 def _parse(s):
-    """Converte uno SMILES in molecola rdkit, con un secondo tentativo piu' permissivo.
-
-    Otto composti di alluminio non superano il controllo di valenza standard; vengono
-    riletti disattivando la sola sanitizzazione delle proprieta', cosi' nessuna molecola
-    resta senza fingerprint. Restituisce ``(mol, rilassato)``, con ``mol`` a ``None`` se
-    entrambi i tentativi falliscono.
-    """
     mol = Chem.MolFromSmiles(s)
     if mol is not None:
         return mol, False

@@ -1,14 +1,4 @@
-"""Caricamento del dataset Tox21, split e statistiche descrittive.
-
-Il dataset e' ``ogbg-moltox21`` di OGB: 7831 molecole gia' convertite in grafi PyG, con
-12 etichette binarie ciascuna e il 17% di etichette assenti (NaN). Lo split di
-riferimento e' quello scaffold ufficiale di OGB; ``random_split`` fornisce l'alternativa
-casuale usata nell'esperimento E6.
-
-Eseguito come script stampa le statistiche per task:
-
-    python src/data.py
-"""
+"""Caricamento del dataset Tox21. """
 from pathlib import Path
 import torch
 from torch_geometric.data.data import DataEdgeAttr, DataTensorAttr
@@ -34,11 +24,8 @@ def _allow_pyg_globals():
 
 def load_tox21(root=DATA_ROOT):
     """Scarica (se serve) e apre ogbg-moltox21.
-
     Restituisce ``(dataset, split_idx)`` dove ``split_idx`` e' lo split scaffold ufficiale
-    con chiavi ``train`` / ``valid`` / ``test``. Il download avviene una sola volta in
-    ``root`` ed e' di circa 3 MB.
-    """
+    con chiavi ``train`` / ``valid`` / ``test``.  """
     _allow_pyg_globals()
 
     dataset = PygGraphPropPredDataset(name="ogbg-moltox21", root=str(root))
@@ -46,13 +33,6 @@ def load_tox21(root=DATA_ROOT):
 
 
 def random_split(dataset, seed=0):
-    """Partizione casuale con le stesse taglie dello split scaffold (esperimento E6).
-
-    Il seed controlla il sorteggio: seed diversi danno insiemi di test diversi, quindi la
-    deviazione standard su E6 include anche la variabilita' della partizione.
-    """
-    # le dimensioni sono copiate dallo split scaffold: E6 deve isolare il criterio di
-    # partizione, non la taglia degli insiemi
     scaffold = dataset.get_idx_split()
     n_train, n_valid = len(scaffold["train"]), len(scaffold["valid"])
 
@@ -75,11 +55,6 @@ def get_split(dataset, tipo="scaffold", seed=0):
 
 
 def dataset_stats(dataset, split_idx=None):
-    """Statistiche per la fase esplorativa.
-
-    Restituisce ``(overall, rows)``: un dizionario con i totali del dataset e una riga per
-    task con numero di etichette misurate, percentuale di mancanti e di positivi.
-    """
     y = torch.cat([d.y for d in dataset], dim=0)  # [N, 12]
     valid = ~torch.isnan(y)
 

@@ -1,14 +1,4 @@
-"""Architetture a grafo: GIN, GINE e GCN con la stessa struttura di contorno.
-
-Tutti e tre i modelli condividono lo schema di OGB per le molecole: gli attributi
-categorici degli atomi passano per un ``AtomEncoder``, seguono ``num_layers`` strati di
-message passing ciascuno con batch normalization, ReLU (tranne l'ultimo) e dropout, poi un
-pooling globale produce il vettore della molecola e una testa lineare i 12 logit.
-
-Le tre convoluzioni si distinguono per l'informazione che usano: GIN aggrega i soli nodi,
-GINE somma anche le feature dei legami (esperimento E3), GCN normalizza per il grado ed e'
-il termine di confronto meno espressivo (E2).
-"""
+"""Architetture a grafo: GIN, GINE e GCN con la stessa struttura di contorno. """
 import torch
 import torch.nn.functional as F
 from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
@@ -27,7 +17,6 @@ CONVS = ("gin", "gine", "gcn")
 
 
 def _mlp(hidden):
-    """MLP a due strati usato dentro GIN e GINE, nella forma prevista dal paper GIN."""
     return nn.Sequential(
         nn.Linear(hidden, 2 * hidden), nn.BatchNorm1d(2 * hidden), nn.ReLU(),
         nn.Linear(2 * hidden, hidden),
@@ -35,20 +24,6 @@ def _mlp(hidden):
 
 
 class GNN(nn.Module):
-    """Rete a grafo parametrica per la classificazione multi-task di molecole.
-
-    Args:
-        conv: ``"gin"``, ``"gine"`` o ``"gcn"``.
-        num_layers: numero di strati di message passing (raggio del vicinato visto).
-        hidden: dimensione delle rappresentazioni dei nodi.
-        dropout: probabilita' di dropout dopo ogni strato.
-        pooling: ``"mean"``, ``"sum"`` o ``"max"`` per la lettura a livello di grafo.
-        num_tasks: numero di uscite, 12 su Tox21.
-
-    Il forward accetta un ``Batch`` di PyG e restituisce i logit ``[num_graphs, num_tasks]``
-    (non le probabilita': la sigmoide e' dentro la loss e viene applicata in valutazione).
-    """
-
     def __init__(self, conv="gin", num_layers=5, hidden=300, dropout=0.5,
                  pooling="mean", num_tasks=12):
         super().__init__()
@@ -82,7 +57,6 @@ class GNN(nn.Module):
         self.head = nn.Linear(hidden, num_tasks)
 
     def forward(self, data):
-        """Da un batch di grafi ai logit per molecola."""
         h = self.atom_encoder(data.x)
 
         for i, conv in enumerate(self.convs):
@@ -99,5 +73,4 @@ class GNN(nn.Module):
 
 
 def count_parameters(model):
-    """Numero di parametri addestrabili, riportato nei record dei run."""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
