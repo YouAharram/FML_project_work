@@ -14,18 +14,10 @@ TASK_NAMES = [
 
 
 def _allow_pyg_globals():
-    """Autorizza le classi PyG per ``torch.load``.
-
-    ogb 1.3.6 chiama ``torch.load`` senza ``weights_only=False``; da torch 2.6 il default
-    e' cambiato e il caricamento fallisce se le classi non sono in allowlist.
-    """
     torch.serialization.add_safe_globals([DataEdgeAttr, DataTensorAttr, GlobalStorage])
 
 
 def load_tox21(root=DATA_ROOT):
-    """Scarica (se serve) e apre ogbg-moltox21.
-    Restituisce ``(dataset, split_idx)`` dove ``split_idx`` e' lo split scaffold ufficiale
-    con chiavi ``train`` / ``valid`` / ``test``.  """
     _allow_pyg_globals()
 
     dataset = PygGraphPropPredDataset(name="ogbg-moltox21", root=str(root))
